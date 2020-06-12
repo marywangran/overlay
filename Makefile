@@ -1,12 +1,14 @@
+common.o: common.c common.h
+	gcc -c common.c
 
-chat: SimpleChat.c list.h
-	gcc SimpleChat.c -o SimpleChat
+chat: SimpleChat.c common.o
+	gcc common.o SimpleChat.c -o SimpleChat
 
-switch: SimpleVswitch.c list.h
-	gcc SimpleVswitch.c -o OverlaySwitch
+switch: SimpleVswitch.c common.o
+	gcc SimpleVswitch.c common.o -o OverlaySwitch
 
-controller: controller.c list.h
-	gcc controller.c -o controller
+controller: controller.c common.o
+	gcc controller.c common.o -o controller
 
 clean:
 	rm -f SimpleChat OverlaySwitch controller *.o
