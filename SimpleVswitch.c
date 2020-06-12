@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <string.h>
 #include <stdio.h>
 #include <sys/types.h> 
 #include <sys/socket.h>
@@ -12,27 +13,10 @@
 #include <errno.h>
 #include <fcntl.h>
 
-#include "list.h"
+#include "common.h"
 
-struct ethernet_header {
-    unsigned char dest[6];
-    unsigned char source[6];
-    unsigned short type;
-} __attribute__((packed));
 
-struct tuple {
-	char addr[16];
-	unsigned short port;
-	unsigned short id;
-	unsigned short unused;
-} __attribute__((packed));
 
-struct ctrl_header {
-	unsigned short sid;
-	unsigned short did;
-	unsigned short num;
-	unsigned short unused;
-} __attribute__((packed));
 
 struct node_info {
 	struct list_head list;
@@ -48,6 +32,7 @@ struct mac_entry {
 	struct node_info *peer;
 };
 
+/*
 struct frame {
 	unsigned short sid;
 	unsigned short did;
@@ -63,12 +48,12 @@ struct control_frame {
 struct config;
 struct process_handler {
 	struct list_head list;
+	unsigned char id;
 	struct node_info *peer;
 	int (*send)(struct process_handler *this, struct frame *frame);
 	int (*receive)(struct process_handler *this, struct frame *frame);
 	struct config *conf;
 };
-
 struct server {
 	char addr[16];
 	unsigned short port;
@@ -81,12 +66,13 @@ struct config {
 	int udp_fd;
 	int ctrl_fd;
 	struct server server;
-	struct list_head macs;
 	struct list_head peers;
+	struct list_head macs;
 	struct list_head stack;
 	struct list_head *first;
 	struct list_head *last;
 };
+*/
 
 
 int server_msg_read(struct config *conf)

@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <string.h>
 #include <stdio.h>
 #include <sys/types.h> 
 #include <sys/socket.h>
@@ -11,28 +12,8 @@
 #include <sys/select.h>
 #include <errno.h>
 #include <fcntl.h>
+#include "common.h"
 
-#include "list.h"
-
-struct ethernet_header {
-    unsigned char dest[6];
-    unsigned char source[6];
-    unsigned short type;
-} __attribute__((packed));
-
-struct tuple {
-	char addr[16];
-	unsigned short port;
-	unsigned short id;
-	unsigned short unused;
-} __attribute__((packed));
-
-struct ctrl_header {
-	unsigned short sid;
-	unsigned short did;
-	unsigned short num;
-	unsigned short unused;
-} __attribute__((packed));
 
 struct node_info {
 	struct list_head list;
@@ -40,6 +21,7 @@ struct node_info {
 	void *other;
 };
 
+/*
 struct frame {
 	unsigned short sid;
 	unsigned short did;
@@ -61,7 +43,6 @@ struct process_handler {
 	int (*receive)(struct process_handler *this, struct frame *frame);
 	struct config *conf;
 };
-
 struct server {
 	char addr[16];
 	unsigned short port;
@@ -80,6 +61,7 @@ struct config {
 	struct list_head *last;
 	int num_handlers;
 };
+*/
 
 
 int server_msg_read(struct config *conf)
