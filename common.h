@@ -61,14 +61,24 @@ struct ctrl_header {
 	unsigned short sid;
 	unsigned short did;
 	unsigned short num;
+	unsigned short type;
 	unsigned short unused;
 } __attribute__((packed));
 
-struct frame {
+#define FRAME_MAX	1500
+#define	SEGS_MAX	32
+
+struct framehdr {
 	unsigned short sid;
 	unsigned short did;
-	char data[1500];
-	int len;
+	unsigned short srlen;
+	unsigned int len;
+	signed short segs[SEGS_MAX];
+} __attribute__((packed));
+
+struct frame {
+	struct framehdr hdr;
+	char data[FRAME_MAX];
 } __attribute__((packed));
 
 struct control_frame {
@@ -105,7 +115,7 @@ struct config {
 	struct server server;
 	struct list_head peers;
 	struct list_head stack;
-	struct list_head macs;
+	struct list_head fwdtable;
 	struct list_head *first;
 	struct list_head *last;
 	int num_handlers;
@@ -116,7 +126,14 @@ int call_stack(struct config *conf, int dir);
 int server_msg_register(struct config *conf);
 int init_server_connect(struct config *conf, char *addr, unsigned short port);
 int server_msg_read(struct config *conf);
+int server_request(struct config *conf, const char *cmd, unsigned int len);
+int server_reply(struct config *conf, char *buffer, unsigned int *plen);
 int register_handler(struct process_handler *handler, struct config *conf);
 int unregister_handler(struct process_handler *handler, struct config *conf);
-int init_config(struct config *conf);
-int init_self(struct config *conf, char *addr, unsigned short port, int type);
+int init_config(struct config *conf, int type);
+int init_self(struct config *conf, char *addr, unsigned short port);
+
+void INIT_LIST_HEAD(struct list_head *list);
+void list_add_tail(struct list_head *new, struct list_head *head);
+void list_add(struct list_head *new, struct list_head *head);
+void list_del(struct list_head *entry);

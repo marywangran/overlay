@@ -15,7 +15,7 @@ int read_from_tap(struct process_handler *obj, struct frame *frame)
 	size_t len;
 
 	len = read(fd, frame->data, sizeof(frame->data));
-	frame->len = len;
+	frame->hdr.len = len + sizeof(struct framehdr);
 
 	return ret;
 }
@@ -24,9 +24,9 @@ int write_to_tap(struct process_handler *obj, struct frame *frame)
 {
 	int ret = 0;
 	int fd = obj->conf->fd.cfd;
-	size_t len;
+	size_t len = frame->hdr.len - sizeof(struct framehdr);
 
-	len = write(fd, frame->data, sizeof(frame->data));
+	len = write(fd, frame->data, len);
 
 	return ret;
 }
@@ -43,7 +43,7 @@ int frame_routing(struct process_handler *obj, struct frame *frame)
 	struct list_head *tmp;
 	
 	memcpy(&eh, frame->data, sizeof(eh));
-	list_for_each(tmp, &obj->conf->macs) {
+	list_for_each(tmp, &obj->conf->fwdtable) {
 		struct mac_entry *tmp_entry = list_entry(tmp, struct mac_entry, node);
 		if (!memcmp(eh.dest, tmp_entry->mac, 6)) {
 			obj->peer = tmp_entry->peer;
@@ -62,7 +62,7 @@ int mac_learning(struct process_handler *obj, struct frame *frame)
 	struct list_head *tmp;
 	
 	memcpy(&eh, frame->data, sizeof(eh));
-	list_for_each(tmp, &obj->conf->macs) {
+	list_for_each(tmp, &obj->conf->fwdtable) {
 		struct mac_entry *tmp_entry = list_entry(tmp, struct mac_entry, node);
 		if (!memcmp(eh.source, tmp_entry->mac, 6)) {
 			entry = tmp_entry;
@@ -87,7 +87,7 @@ int mac_learning(struct process_handler *obj, struct frame *frame)
 	INIT_LIST_HEAD(&entry->list);
 	list_add(&entry->list, &entry->peer->macs);
 	INIT_LIST_HEAD(&entry->node);
-	list_add(&entry->node, &obj->conf->macs);
+	list_add(&entry->node, &obj->conf->fwdtable);
 
 	return ret;
 }
@@ -100,12 +100,13 @@ int encode_frame(struct process_handler *obj, struct frame *frame)
 {
 	int ret = 0;
 
-	frame->sid = obj->conf->self->tuple.id;
-	frame->did = 0;
+	frame->hdr.sid = obj->conf->self->tuple.id;
+	frame->hdr.did = 0;
+	frame->hdr.srlen = 0;
 	if (obj->peer) {
-		frame->did = obj->peer->tuple.id;
+		frame->hdr.did = obj->peer->tuple.id;
 	} 
-	printf("####1000 encode_frame :%d  %d\n", frame->sid, frame->did);
+	printf("####1000 encode_frame :%d  %d\n", frame->hdr.sid, frame->hdr.did);
 
 	return ret;
 }
@@ -114,8 +115,11 @@ int decode_frame(struct process_handler *obj, struct frame *frame)
 {
 	int ret = 0;
 
-	printf("#### decode_frame: sid:%d  did:%d\n", frame->sid, frame->did);
-	if (frame->did != 0 && frame->did != obj->conf->self->tuple.id) {
+	printf("#### decode_frame: sid:%d  did:%d\n", frame->hdr.sid, frame->hdr.did);
+	if (frame->hdr.did != 0 && frame->hdr.did != obj->conf->self->tuple.id) {
+		ret = -1;
+	}
+	if (frame->hdr.segs != 0) {
 		ret = -1;
 	}
 
@@ -129,11 +133,12 @@ static struct process_handler protocol_handler = {
 int encrypt(struct process_handler *obj, struct frame *frame)
 {
 	int ret = 0;
-	int i;
+	int i = sizeof(struct framehdr);
 	char *c = (char *)frame;
-	int len = sizeof(short)*2 + frame->len;
-	for (i = 0; i < len; i++) {
-		c[i] = c[i]+1;
+	int len = frame->hdr.len - i;
+
+	for (; i < len; i++) {
+		c[i] = c[i] + 1;
 	}
 	return ret;
 }
@@ -141,12 +146,12 @@ int encrypt(struct process_handler *obj, struct frame *frame)
 int decrypt(struct process_handler *obj, struct frame *frame)
 {
 	int ret = 0;
-	int i;
+	int i = sizeof(struct framehdr);
 	char *c = (char *)frame;
-	int len = frame->len;
+	int len = frame->hdr.len - i;
 
-	for (i = 0; i < len; i++) {
-		c[i] = c[i]-1;
+	for (; i < len; i++) {
+		c[i] = c[i] - 1;
 	}
 	return ret;
 }
@@ -171,14 +176,14 @@ int send_frame(struct process_handler *obj, struct frame *frame)
 	if (peer) {
 		addr.sin_port = htons(peer->tuple.port);
 		addr.sin_addr.s_addr = inet_addr(peer->tuple.addr);
-		len = sendto(fd, frame, sizeof(short)*2+frame->len, 0, (struct sockaddr *)&addr, addr_len);
+		len = sendto(fd, frame, frame->hdr.len, 0, (struct sockaddr *)&addr, addr_len);
 	} else {
 		struct list_head *tmp;
 		list_for_each(tmp, &conf->peers) {
 			peer = list_entry(tmp, struct node_info, list);
 			addr.sin_port = htons(peer->tuple.port);
 			addr.sin_addr.s_addr = inet_addr(peer->tuple.addr);
-			len = sendto(fd, frame, sizeof(short)*2+frame->len, 0, (struct sockaddr *)&addr, addr_len);
+			len = sendto(fd, frame, frame->hdr.len, 0, (struct sockaddr *)&addr, addr_len);
 		}
 		
 	}
@@ -199,7 +204,7 @@ int receive_frame(struct process_handler *obj, struct frame *frame)
 	bzero (&addr, sizeof(addr));
 	
 	len = recvfrom(obj->conf->udp_fd, frame, sizeof(struct frame), 0 , (struct sockaddr *)&addr ,&addr_len);
-	frame->len = len;
+	frame->hdr.len = len;
 
 	list_for_each(tmp, &obj->conf->peers) {
 		peer = list_entry(tmp, struct node_info, list);
@@ -245,21 +250,19 @@ int main(int argc, char **argv)
 	char localIP[16];
 	unsigned short serverPORT;
 	unsigned short localPORT;
-	int type;
 	struct config conf;
 
-	if (argc != 6) {
-		printf("./a.out serverIP serverPORT localIP localPORT [EDGE|FWD]\n");
+	if (argc != 5) {
+		printf("./a.out serverIP serverPORT localIP localPORT\n");
 	}
 	strcpy(serverIP, argv[1]);
 	serverPORT = atoi(argv[2]);
 	strcpy(localIP, argv[3]);
 	localPORT = atoi(argv[4]);
-	type = atoi(argv[5]);
 
-	init_config(&conf);	
+	init_config(&conf, TYPE_EDGE);	
 	init_tap(&conf);
-	init_self(&conf, localIP, localPORT, type);
+	init_self(&conf, localIP, localPORT);
 	
 	register_handler(&tap_handler, &conf);
 	register_handler(&routing_handler, &conf);

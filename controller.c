@@ -1,40 +1,4 @@
-#include <stdlib.h>
-#include <string.h>
-#include <stdio.h>
-#include <sys/types.h> 
-#include <sys/socket.h>
-#include <arpa/inet.h> 
-#include <strings.h>
-#include <unistd.h>
-#include <net/if.h>
-#include <linux/if_tun.h>
-#include <sys/ioctl.h>
-#include <sys/select.h>
-#include <errno.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-
-#include "list.h"
-
-struct tuple {
-	char addr[16];
-	unsigned short port;
-	unsigned short id;
-	unsigned short unused;
-} __attribute__((packed));
-
-struct ctrl_header {
-	unsigned short sid;
-	unsigned short did;
-	unsigned short num;
-	unsigned short unused;
-} __attribute__((packed));
-
-struct control_frame {
-	struct ctrl_header header;
-	struct tuple tuple[0];
-} __attribute__((packed));
+#include "common.h"
 
 struct client {
 	struct list_head list;
@@ -43,14 +7,14 @@ struct client {
 	void *others;
 };
 
-struct config {
+struct server_config {
 	int listen_fd;
 	struct list_head clients;
 	unsigned short tot_num;
 };
 
 
-int client_msg_process(int fd, struct config *conf)
+int client_msg_process(int fd, struct server_config *conf)
 {
 	int ret = 0;
 	int i = 0;
@@ -114,7 +78,7 @@ int client_msg_process(int fd, struct config *conf)
 
 }
 
-int main_loop(struct config *conf)
+int server_main_loop(struct server_config *conf)
 {
 	int ret = 0;
 	int len = sizeof(struct sockaddr_in);
@@ -162,7 +126,7 @@ int main_loop(struct config *conf)
 	return ret;	
 }
 
-int init_config(struct config *conf, char *srv_addr, unsigned short srv_port)
+int server_init_config(struct server_config *conf, char *srv_addr, unsigned short srv_port)
 {
 	int ret = 0;
 	int len;
@@ -198,7 +162,7 @@ int main(int argc, char **argv)
 {
 	char serverIP[16];
 	unsigned short serverPORT;
-	struct config conf;
+	struct server_config conf;
 
 	if (argc != 3) {
 		printf("./a.out serverIP serverPORT localIP localPORT\n");
@@ -206,9 +170,9 @@ int main(int argc, char **argv)
 	strcpy(serverIP, argv[1]);
 	serverPORT = atoi(argv[2]);
 	
-	init_config(&conf, serverIP, serverPORT);
+	server_init_config(&conf, serverIP, serverPORT);
 
-	main_loop(&conf);
+	server_main_loop(&conf);
 
 	return 0;
 }

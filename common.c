@@ -113,6 +113,50 @@ int server_msg_register(struct config *conf)
 	return ret;
 }
 
+int server_request(struct config *conf, const char *cmd, unsigned int len)
+{
+	int ret = 0;
+	struct sockaddr_in addr;
+	int addr_len = sizeof(struct sockaddr_in); 
+	struct ctrl_header header = {0};
+	char pkt[FRAME_MAX] = { 0 };
+
+	bzero (&addr, sizeof(addr));
+	addr.sin_family = AF_INET;
+	addr.sin_port = htons(conf->server.port);
+	addr.sin_addr.s_addr = inet_addr(conf->server.addr);
+	
+	header.sid = conf->self->tuple.id;
+	memcpy(&pkt[0], &header, sizeof(header));
+	memcpy(&pkt[sizeof(header)], cmd, len);
+	
+	len = sendto(conf->ctrl_fd, &pkt[0], sizeof(header) + len, 0, (struct sockaddr *)&addr, addr_len);
+
+	return ret;
+}
+
+int server_reply(struct config *conf, char *buff, unsigned int *plen)
+{
+	int ret = 0;
+	size_t len = 0;
+	struct sockaddr_in addr;
+	char *saddr;
+	int port;
+	int addr_len = sizeof(struct sockaddr_in); 
+	char pkt[FRAME_MAX] = { 0 };
+
+	bzero (&addr, sizeof(addr));
+	
+	len = recvfrom(conf->ctrl_fd, &pkt[0], FRAME_MAX, 0 , (struct sockaddr *)&addr ,&addr_len);
+	if (len <= 0) {
+		exit(-1);
+	}
+	*plen = len;
+	memcpy(buff, &pkt[sizeof(struct ctrl_header)], len);
+
+	return ret;
+}
+
 int server_msg_read(struct config *conf)
 {
 	int ret = 0;
@@ -177,21 +221,21 @@ int unregister_handler(struct process_handler *handler, struct config *conf)
 	//TODO
 }
 
-int init_config(struct config *conf)
+int init_config(struct config *conf, int type)
 {
 	INIT_LIST_HEAD(&conf->stack);
 	INIT_LIST_HEAD(&conf->peers);
-	INIT_LIST_HEAD(&conf->macs);
+	INIT_LIST_HEAD(&conf->fwdtable);
 	conf->first = NULL;
 	conf->last = NULL;
-	conf->type = 0;
+	conf->type = type;
 	conf->fd.cfd = -1;
 	conf->udp_fd = -1;
 	conf->self = NULL;
 	conf->num_handlers = 0;
 }
 
-int init_self(struct config *conf, char *addr, unsigned short port, int type)
+int init_self(struct config *conf, char *addr, unsigned short port)
 {
 	int fd = -1;
 	struct sockaddr_in saddr; 
@@ -202,11 +246,10 @@ int init_self(struct config *conf, char *addr, unsigned short port, int type)
 		exit(-1);
 	}
 	conf->self = self;
-	conf->type = type;
 
 	strcpy(conf->self->tuple.addr, addr);
 	conf->self->tuple.port = port;
-	conf->self->tuple.type = type;
+	conf->self->tuple.type = conf->type;
 	if ((fd = socket(AF_INET, SOCK_DGRAM, 0)) < 0){
 		exit (-1);
 	}
@@ -269,9 +312,7 @@ int main_loop(struct config *conf)
 		int i;
 		FD_ZERO(&rd_set);
 		FD_SET(conf->ctrl_fd, &rd_set);
-		if (type == TYPE_EDGE) {
-			FD_SET(conf->fd.cfd, &rd_set); 
-		}
+		FD_SET(conf->fd.cfd, &rd_set); 
 		FD_SET(conf->udp_fd, &rd_set);
 	
 		nfds = select(max+1, &rd_set, NULL, NULL, NULL);
@@ -280,7 +321,7 @@ int main_loop(struct config *conf)
 			if(FD_ISSET(conf->ctrl_fd, &rd_set)) {
 				server_msg_read(conf);
 			}
-			if(type == TYPE_EDGE && FD_ISSET(conf->fd.cfd, &rd_set)) {
+			if(FD_ISSET(conf->fd.cfd, &rd_set)) {
 				call_stack(conf, 1);
 			}
 			if(FD_ISSET(conf->udp_fd, &rd_set)) {
